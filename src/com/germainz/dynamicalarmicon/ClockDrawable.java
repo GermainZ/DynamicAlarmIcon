@@ -19,7 +19,7 @@ public class ClockDrawable extends Drawable {
         mPaint.setColor(Color.WHITE);
         mPaint.setStyle(Paint.Style.FILL_AND_STROKE);
         mPaint.setAntiAlias(true);
-        mHourAngle = hours * 360 / 12;
+        mHourAngle = (int) ((hours + minutes / 60f) * 360 / 12);
         mMinuteAngle = minutes * 360 / 60;
     }
 
@@ -56,7 +56,7 @@ public class ClockDrawable extends Drawable {
     }
 
     public void setTime(int hours, int minutes) {
-        mHourAngle = hours * 360 / 12;
+        mHourAngle = (int) ((hours + minutes / 60f) * 360 / 12);
         mMinuteAngle = minutes * 360 / 60;
         invalidateSelf();
     }
