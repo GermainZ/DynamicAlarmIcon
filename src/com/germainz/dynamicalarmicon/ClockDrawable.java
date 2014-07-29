@@ -25,7 +25,7 @@ public class ClockDrawable extends Drawable {
 
     @Override
     public void draw(Canvas canvas) {
-        float width = getBounds().width() * .9f;
+        float width = getBounds().width();
         float height = getBounds().height() * .9f;
         float x = width / 2;
         float y = height / 2 + height / 10;
