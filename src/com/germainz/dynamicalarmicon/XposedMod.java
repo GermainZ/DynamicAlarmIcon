@@ -5,6 +5,7 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
 import android.content.pm.PackageManager;
+import android.os.Handler;
 import android.provider.Settings;
 import android.text.TextUtils;
 import android.text.format.DateFormat;
@@ -72,12 +73,23 @@ public class XposedMod implements IXposedHookLoadPackage {
                     protected void afterHookedMethod(final MethodHookParam param) throws Throwable {
                         BroadcastReceiver broadcastReceiver = new BroadcastReceiver() {
                             @Override
-                            public void onReceive(Context context, Intent intent) {
-                                if (intent.getAction().equals(UPDATE_ALARM_ICON)) {
-                                    updateAlarmIcon(intent, param.thisObject);
-                                } else if (intent.getAction().equals(UPDATE_DESKCLOCK_ICON)) {
-                                    updateDeskClockIcon(context, param.thisObject);
-                                }
+                            public void onReceive(final Context context, final Intent intent) {
+                                /* Why the short delay? For two reasons:
+                                *  1- Some clock apps send the ALARM_CHANGED broadcast before setting
+                                *     NEXT_ALARM_FORMATTED.
+                                *  2- The broadcast is sometimes received and handled *before* the notification is
+                                *     actually added to the status bar (for UPDATE_DESKCLOCK_ICON).
+                                */
+                                new Handler().postDelayed(new Runnable() {
+                                    @Override
+                                    public void run() {
+                                        if (intent.getAction().equals(UPDATE_ALARM_ICON)) {
+                                            updateAlarmIcon(intent, param.thisObject);
+                                        } else if (intent.getAction().equals(UPDATE_DESKCLOCK_ICON)) {
+                                            updateDeskClockIcon(context, param.thisObject);
+                                        }
+                                    }
+                                }, 5);
                             }
                         };
 
