@@ -101,6 +101,16 @@ public class XposedMod implements IXposedHookLoadPackage {
                     }
                 }
         );
+
+        findAndHookMethod("com.android.systemui.statusbar.StatusBarIconView", classLoader, "updateDrawable",
+                boolean.class, new XC_MethodHook() {
+                    @Override
+                    protected void beforeHookedMethod(MethodHookParam param) throws Throwable {
+                        if (getObjectField(param.thisObject, "mSlot").equals("alarm_clock"))
+                            param.setResult(false);
+                    }
+                }
+        );
     }
 
     private void hookTimely(final ClassLoader classLoader) {
