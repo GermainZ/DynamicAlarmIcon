@@ -107,7 +107,7 @@ public class XposedMod implements IXposedHookLoadPackage {
                     @Override
                     protected void beforeHookedMethod(MethodHookParam param) throws Throwable {
                         if (getObjectField(param.thisObject, "mSlot").equals("alarm_clock"))
-                            param.setResult(false);
+                            param.setResult(true);
                     }
                 }
         );
