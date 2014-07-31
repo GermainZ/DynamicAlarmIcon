@@ -62,24 +62,32 @@ public class XposedMod implements IXposedHookLoadPackage {
         findAndHookMethod("com.android.systemui.statusbar.phone.PhoneStatusBarPolicy", classLoader, "updateAlarm",
                 Intent.class, new XC_MethodReplacement() {
                     @Override
-                    protected Object replaceHookedMethod(MethodHookParam param) throws Throwable {
+                    protected Object replaceHookedMethod(final MethodHookParam param) throws Throwable {
                         boolean alarmSet = ((Intent) param.args[0]).getBooleanExtra("alarmSet", false);
                         Object mService = getObjectField(param.thisObject, "mService");
                         callMethod(mService, "setIconVisibility", "alarm_clock", alarmSet);
                         if (!alarmSet)
                             return null;
-                        Context context = (Context) getObjectField(param.thisObject, "mContext");
-                        String nextAlarm = Settings.System.getString(context.getContentResolver(),
-                                Settings.System.NEXT_ALARM_FORMATTED);
-                        if (nextAlarm.isEmpty())
-                            return null;
-                        String[] nextAlarmTime = nextAlarm.split(" ")[1].split(":");
-                        int nextAlarmHour = Integer.parseInt(nextAlarmTime[0]) % 12;
-                        int nextAlarmMinute = Integer.parseInt(nextAlarmTime[1]);
-                        Intent intent = new Intent(UPDATE_ALARM_ICON);
-                        intent.putExtra("hour", nextAlarmHour);
-                        intent.putExtra("minute", nextAlarmMinute);
-                        context.sendBroadcast(intent);
+                        /* Why the short delay? Because some clock apps send the ALARM_CHANGED broadcast before
+                         * setting NEXT_ALARM_FORMATTED.
+                         */
+                        new Handler().postDelayed(new Runnable() {
+                            @Override
+                            public void run() {
+                                Context context = (Context) getObjectField(param.thisObject, "mContext");
+                                String nextAlarm = Settings.System.getString(context.getContentResolver(),
+                                        Settings.System.NEXT_ALARM_FORMATTED);
+                                if (!nextAlarm.isEmpty()) {
+                                    String[] nextAlarmTime = nextAlarm.split(" ")[1].split(":");
+                                    int nextAlarmHour = Integer.parseInt(nextAlarmTime[0]) % 12;
+                                    int nextAlarmMinute = Integer.parseInt(nextAlarmTime[1]);
+                                    Intent intent = new Intent(UPDATE_ALARM_ICON);
+                                    intent.putExtra("hour", nextAlarmHour);
+                                    intent.putExtra("minute", nextAlarmMinute);
+                                    context.sendBroadcast(intent);
+                                }
+                            }
+                        }, 50);
                         return null;
                     }
                 }
@@ -190,16 +198,8 @@ public class XposedMod implements IXposedHookLoadPackage {
                         BroadcastReceiver broadcastReceiver = new BroadcastReceiver() {
                             @Override
                             public void onReceive(final Context context, final Intent intent) {
-                                /* Why the short delay? Because some clock apps send the ALARM_CHANGED broadcast before
-                                 * setting NEXT_ALARM_FORMATTED.
-                                 */
-                                new Handler().postDelayed(new Runnable() {
-                                    @Override
-                                    public void run() {
-                                        if (intent.getAction().equals(UPDATE_ALARM_ICON))
-                                            updateAlarmIcon(intent, param.thisObject);
-                                    }
-                                }, 5);
+                                if (intent.getAction().equals(UPDATE_ALARM_ICON))
+                                    updateAlarmIcon(intent, param.thisObject);
                             }
                         };
 
