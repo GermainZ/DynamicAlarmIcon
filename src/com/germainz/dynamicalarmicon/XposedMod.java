@@ -46,7 +46,8 @@ public class XposedMod implements IXposedHookLoadPackage {
     private ClockDrawable mClockDrawable;
     private static final String UPDATE_ALARM_ICON = "com.germainz.dynamicalarmicon.UPDATE_ALARM_ICON";
     private static final Set<String> CLOCK_PACKAGES = new HashSet<String>(Arrays.asList(new String[]{
-            "com.android.deskclock", "com.mobitobi.android.gentlealarmtrial", "com.mobitobi.android.gentlealarm"
+            "com.android.deskclock", "com.google.android.deskclock", "com.mobitobi.android.gentlealarmtrial",
+            "com.mobitobi.android.gentlealarm"
     }));
     private static final Pattern TIME_PATTERN = Pattern.compile("([01]?[0-9]|2[0-3]):([0-5][0-9])");
 
