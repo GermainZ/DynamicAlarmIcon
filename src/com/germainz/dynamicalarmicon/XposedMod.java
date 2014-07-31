@@ -1,24 +1,41 @@
 package com.germainz.dynamicalarmicon;
 
+import android.app.Notification;
 import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
-import android.content.pm.PackageManager;
+import android.graphics.Bitmap;
+import android.graphics.Canvas;
 import android.os.Handler;
+import android.os.IBinder;
+import android.os.Parcel;
+import android.os.Parcelable;
 import android.provider.Settings;
+import android.service.notification.StatusBarNotification;
 import android.text.TextUtils;
 import android.text.format.DateFormat;
 import android.view.View;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
-import android.widget.TextView;
+import android.widget.RemoteViews;
+
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Set;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 import static de.robv.android.xposed.XposedHelpers.callMethod;
 import static de.robv.android.xposed.XposedHelpers.callStaticMethod;
+import static de.robv.android.xposed.XposedHelpers.findAndHookConstructor;
 import static de.robv.android.xposed.XposedHelpers.findAndHookMethod;
 import static de.robv.android.xposed.XposedHelpers.findClass;
+import static de.robv.android.xposed.XposedHelpers.getAdditionalInstanceField;
 import static de.robv.android.xposed.XposedHelpers.getObjectField;
+import static de.robv.android.xposed.XposedHelpers.setAdditionalInstanceField;
 
 import de.robv.android.xposed.IXposedHookLoadPackage;
 import de.robv.android.xposed.XC_MethodHook;
@@ -28,7 +45,10 @@ import de.robv.android.xposed.callbacks.XC_LoadPackage;
 public class XposedMod implements IXposedHookLoadPackage {
     private ClockDrawable mClockDrawable;
     private static final String UPDATE_ALARM_ICON = "com.germainz.dynamicalarmicon.UPDATE_ALARM_ICON";
-    private static final String UPDATE_DESKCLOCK_ICON = "com.germainz.dynamicalarmicon.UPDATE_DESKCLOCK_ICON";
+    private static final Set<String> CLOCK_PACKAGES = new HashSet<String>(Arrays.asList(new String[]{
+            "com.android.deskclock", "com.mobitobi.android.gentlealarmtrial", "com.mobitobi.android.gentlealarm"
+    }));
+    private static final Pattern TIME_PATTERN = Pattern.compile("([01]?[0-9]|2[0-3]):([0-5][0-9])");
 
     @Override
     public void handleLoadPackage(XC_LoadPackage.LoadPackageParam lpparam) throws Throwable {
@@ -36,8 +56,6 @@ public class XposedMod implements IXposedHookLoadPackage {
             hookSystemUI(lpparam.classLoader);
         else if (lpparam.packageName.equals("ch.bitspin.timely"))
             hookTimely(lpparam.classLoader);
-        else if (lpparam.packageName.equals("com.android.deskclock"))
-            hookDeskClock(lpparam.classLoader);
     }
 
     private void hookSystemUI(final ClassLoader classLoader) {
@@ -67,6 +85,104 @@ public class XposedMod implements IXposedHookLoadPackage {
                 }
         );
 
+        findAndHookConstructor("com.android.systemui.statusbar.NotificationData.Entry", classLoader,
+                IBinder.class, StatusBarNotification.class, "com.android.systemui.statusbar.StatusBarIconView",
+                new XC_MethodHook() {
+                    @Override
+                    protected void beforeHookedMethod(MethodHookParam param) throws Throwable {
+                        Object notification = param.args[1];
+                        String packageName = (String) getObjectField(notification, "pkg");
+                        if (!CLOCK_PACKAGES.contains(packageName))
+                            return;
+
+                        Notification notif = (Notification) getObjectField(notification, "notification");
+                        RemoteViews contentView = notif.contentView;
+
+                        List<CharSequence> notificationText = new ArrayList<CharSequence>();
+                        ArrayList<Parcelable> actions = (ArrayList<Parcelable>) getObjectField(contentView, "mActions");
+                        for (Parcelable parcelable : actions) {
+                            Parcel parcel = Parcel.obtain();
+                            parcelable.writeToParcel(parcel, 0);
+                            parcel.setDataPosition(0);
+
+                            /* RemoteViews.setTextViewText(…) adds a ReflectionAction action:
+                             *   ReflectionAction(int viewId, String methodName, CharSequence value)
+                             * ReflectionAction writes, in order, the following values to the parcelable:
+                             *   int TAG: 2 for ReflectionAction.
+                             *   int viewId: the view's ID, we don't need that.
+                             *   String methodName: "setText".
+                             *   int type: CHAR_SEQUENCE = 10, but we don't need to check it since it's always 10
+                             *             with setText.
+                             *   CharSequence value: the text we want, written using TextUtils.writeToParcel(…)
+                             */
+
+                            // Check if it's a ReflectionAction.
+                            if (parcel.readInt() != 2)
+                                continue;
+
+                            parcel.readInt(); // discard the viewId.
+                            // Check if methodName = "setText"
+                            if (parcel.readString().equals("setText")) {
+                                parcel.readInt(); // discard type.
+                                // Get value.
+                                notificationText.add(TextUtils.CHAR_SEQUENCE_CREATOR.createFromParcel(parcel));
+                            }
+                            parcel.recycle();
+                        }
+
+                        Integer alarmHour = null;
+                        Integer alarmMinute = null;
+                        // The time should be in the notification's text, not title.
+                        Matcher matcher = TIME_PATTERN.matcher(notificationText.get(1));
+                        if (matcher.find()) {
+                            String[] alarmTime = TextUtils.split(matcher.group(), ":");
+                            alarmHour = Integer.parseInt(alarmTime[0]);
+                            alarmMinute = Integer.parseInt(alarmTime[1]);
+                        }
+                        // No time found.
+                        if (alarmHour == null)
+                            return;
+
+                        // Set the small icon.
+                        ImageView icon = (ImageView) param.args[2];
+                        icon.setImageDrawable(new ClockDrawable(alarmHour, alarmMinute));
+
+                        // Set the large icon (shown in the notification shade) for the normal views.
+                        // The expanded view's large icon is set, if needed, in setBigContentView's hook.
+                        int width = (int) icon.getResources().getDimension(
+                                android.R.dimen.notification_large_icon_width);
+                        int height = (int) icon.getResources().getDimension(
+                                android.R.dimen.notification_large_icon_height);
+                        Bitmap bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888);
+                        Canvas canvas = new Canvas(bitmap);
+                        ClockDrawable clockDrawable = new ClockDrawable(alarmHour, alarmMinute);
+                        clockDrawable.setBounds(0, 0, canvas.getWidth(), canvas.getHeight());
+                        clockDrawable.draw(canvas);
+                        contentView.setImageViewBitmap(android.R.id.icon, bitmap);
+
+                        setAdditionalInstanceField(param.thisObject, "hour", alarmHour);
+                        setAdditionalInstanceField(param.thisObject, "minute", alarmMinute);
+                    }
+                }
+        );
+
+        findAndHookMethod("com.android.systemui.statusbar.NotificationData.Entry", classLoader,
+                "setBigContentView", View.class, new XC_MethodHook() {
+                    @Override
+                    protected void beforeHookedMethod(MethodHookParam param) throws Throwable {
+                        View bigContentView = (View) param.args[0];
+                        if (bigContentView != null) {
+                            ImageView icon = (ImageView) bigContentView.findViewById(android.R.id.icon);
+                            Integer hour = (Integer) getAdditionalInstanceField(param.thisObject, "hour");
+                            if (hour != null) {
+                                Integer minute = (Integer) getAdditionalInstanceField(param.thisObject, "minute");
+                                icon.setImageDrawable(new ClockDrawable(hour, minute));
+                            }
+                        }
+                    }
+                }
+        );
+
         findAndHookMethod("com.android.systemui.statusbar.phone.PhoneStatusBar", classLoader, "makeStatusBarView",
                 new XC_MethodHook() {
                     @Override
@@ -74,20 +190,14 @@ public class XposedMod implements IXposedHookLoadPackage {
                         BroadcastReceiver broadcastReceiver = new BroadcastReceiver() {
                             @Override
                             public void onReceive(final Context context, final Intent intent) {
-                                /* Why the short delay? For two reasons:
-                                *  1- Some clock apps send the ALARM_CHANGED broadcast before setting
-                                *     NEXT_ALARM_FORMATTED.
-                                *  2- The broadcast is sometimes received and handled *before* the notification is
-                                *     actually added to the status bar (for UPDATE_DESKCLOCK_ICON).
-                                */
+                                /* Why the short delay? Because some clock apps send the ALARM_CHANGED broadcast before
+                                 * setting NEXT_ALARM_FORMATTED.
+                                 */
                                 new Handler().postDelayed(new Runnable() {
                                     @Override
                                     public void run() {
-                                        if (intent.getAction().equals(UPDATE_ALARM_ICON)) {
+                                        if (intent.getAction().equals(UPDATE_ALARM_ICON))
                                             updateAlarmIcon(intent, param.thisObject);
-                                        } else if (intent.getAction().equals(UPDATE_DESKCLOCK_ICON)) {
-                                            updateDeskClockIcon(context, param.thisObject);
-                                        }
                                     }
                                 }, 5);
                             }
@@ -95,7 +205,6 @@ public class XposedMod implements IXposedHookLoadPackage {
 
                         IntentFilter intentFilter = new IntentFilter();
                         intentFilter.addAction(UPDATE_ALARM_ICON);
-                        intentFilter.addAction(UPDATE_DESKCLOCK_ICON);
                         Context context = (Context) getObjectField(param.thisObject, "mContext");
                         context.registerReceiver(broadcastReceiver, intentFilter);
                     }
@@ -142,28 +251,6 @@ public class XposedMod implements IXposedHookLoadPackage {
         );
     }
 
-    private void hookDeskClock(final ClassLoader classLoader) {
-        XC_MethodHook hook = new XC_MethodHook() {
-            @Override
-            protected void afterHookedMethod(MethodHookParam param) throws Throwable {
-                Context context = (Context) param.args[0];
-                Intent intent = new Intent(UPDATE_DESKCLOCK_ICON);
-                context.sendBroadcast(intent);
-            }
-        };
-
-        findAndHookMethod("com.android.deskclock.alarms.AlarmNotifications", classLoader,
-                "showLowPriorityNotification", Context.class, "com.android.deskclock.provider.AlarmInstance", hook);
-        findAndHookMethod("com.android.deskclock.alarms.AlarmNotifications", classLoader,
-                "showHighPriorityNotification", Context.class, "com.android.deskclock.provider.AlarmInstance", hook);
-        findAndHookMethod("com.android.deskclock.alarms.AlarmNotifications", classLoader,
-                "showMissedNotification", Context.class, "com.android.deskclock.provider.AlarmInstance", hook);
-        findAndHookMethod("com.android.deskclock.alarms.AlarmNotifications", classLoader,
-                "showSnoozeNotification", Context.class, "com.android.deskclock.provider.AlarmInstance", hook);
-        findAndHookMethod("com.android.deskclock.alarms.AlarmNotifications", classLoader,
-                "showAlarmNotification", Context.class, "com.android.deskclock.provider.AlarmInstance", hook);
-    }
-
     private void updateAlarmIcon(Intent intent, Object thiz) {
         int hour = intent.getIntExtra("hour", 0);
         int minute = intent.getIntExtra("minute", 0);
@@ -180,54 +267,4 @@ public class XposedMod implements IXposedHookLoadPackage {
             mClockDrawable.setTime(hour, minute);
         }
     }
-
-    private void updateDeskClockIcon(Context context, Object thiz) {
-        LinearLayout notificationIcons = (LinearLayout) getObjectField(thiz, "mNotificationIcons");
-        Object notificationData = getObjectField(thiz, "mNotificationData");
-        for (int i = 0; i < notificationIcons.getChildCount(); i++) {
-            View view = notificationIcons.getChildAt(i);
-            if (((String) getObjectField(view, "mSlot")).startsWith("com.android.deskclock/")) {
-                int N = (Integer) callMethod(notificationData, "size");
-                Object entry = callMethod(notificationData, "get", N - i - 1);
-                View content = (View) getObjectField(entry, "content");
-
-                // Get the time from the notification's text.
-                int textId = context.getResources().getIdentifier("text", "id", "android");
-                String alarmText = (String) ((TextView) content.findViewById(textId)).getText();
-                String[] alarmTime = alarmText.split(" ");
-                int index = 1;
-                Context deskClockContext = null;
-                try {
-                    deskClockContext = context.createPackageContext("com.android.deskclock",
-                            Context.CONTEXT_IGNORE_SECURITY);
-                } catch (PackageManager.NameNotFoundException ignored) {
-                    // Impossible — com.android.deskclock definitely exists.
-                }
-                int snoozeUntilId = deskClockContext.getResources().getIdentifier("alarm_alert_snooze_until", "string",
-                        "com.android.deskclock");
-                String snoozeUntilString = deskClockContext.getString(snoozeUntilId);
-                String[] snoozeUntilStringArray = TextUtils.split(snoozeUntilString, "%s");
-                snoozeUntilString = TextUtils.join("\\E.*\\Q", snoozeUntilStringArray);
-                snoozeUntilString = "\\Q" + snoozeUntilString + "\\E";
-                if (alarmText.matches(snoozeUntilString))
-                    index = snoozeUntilString.split(" ").length;
-                alarmTime = alarmTime[index].split(":");
-                final int alarmHour = Integer.parseInt(alarmTime[0]) % 12;
-                final int alarmMinute = Integer.parseInt(alarmTime[1]);
-
-                // Set the small icon.
-                ClockDrawable clockDrawable = new ClockDrawable(alarmHour, alarmMinute);
-                callMethod(view, "setImageDrawable", new ClockDrawable(alarmHour, alarmMinute));
-
-                // Set the large icon (shown in the notification shade) for the normal and expanded views.
-                int iconId = context.getResources().getIdentifier("icon", "id", "android");
-                ImageView icon = (ImageView) content.findViewById(iconId);
-                icon.setImageDrawable(clockDrawable);
-                View big = (View) getObjectField(entry, "expandedBig");
-                icon = (ImageView) big.findViewById(iconId);
-                icon.setImageDrawable(clockDrawable);
-            }
-        }
-    }
-
 }
