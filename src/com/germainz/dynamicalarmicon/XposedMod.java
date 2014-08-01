@@ -28,6 +28,7 @@ import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
+import static de.robv.android.xposed.XposedHelpers.ClassNotFoundError;
 import static de.robv.android.xposed.XposedHelpers.callMethod;
 import static de.robv.android.xposed.XposedHelpers.callStaticMethod;
 import static de.robv.android.xposed.XposedHelpers.findAndHookConstructor;
@@ -43,7 +44,24 @@ import de.robv.android.xposed.XC_MethodReplacement;
 import de.robv.android.xposed.callbacks.XC_LoadPackage;
 
 public class XposedMod implements IXposedHookLoadPackage {
+    private Context mContext;
     private ClockDrawable mClockDrawable;
+    private Runnable updateAlarmIconRunnable = new Runnable() {
+        @Override
+        public void run() {
+            String nextAlarm = Settings.System.getString(mContext.getContentResolver(),
+                    Settings.System.NEXT_ALARM_FORMATTED);
+            if (!nextAlarm.isEmpty()) {
+                String[] nextAlarmTime = nextAlarm.split(" ")[1].split(":");
+                int nextAlarmHour = Integer.parseInt(nextAlarmTime[0]) % 12;
+                int nextAlarmMinute = Integer.parseInt(nextAlarmTime[1]);
+                Intent intent = new Intent(UPDATE_ALARM_ICON);
+                intent.putExtra("hour", nextAlarmHour);
+                intent.putExtra("minute", nextAlarmMinute);
+                mContext.sendBroadcast(intent);
+            }
+        }
+    };
     private static final String UPDATE_ALARM_ICON = "com.germainz.dynamicalarmicon.UPDATE_ALARM_ICON";
     private static final Set<String> CLOCK_PACKAGES = new HashSet<String>(Arrays.asList(new String[]{
             "com.android.deskclock", "com.google.android.deskclock", "com.mobitobi.android.gentlealarmtrial",
@@ -60,39 +78,50 @@ public class XposedMod implements IXposedHookLoadPackage {
     }
 
     private void hookSystemUI(final ClassLoader classLoader) {
-        findAndHookMethod("com.android.systemui.statusbar.phone.PhoneStatusBarPolicy", classLoader, "updateAlarm",
-                Intent.class, new XC_MethodReplacement() {
-                    @Override
-                    protected Object replaceHookedMethod(final MethodHookParam param) throws Throwable {
-                        boolean alarmSet = ((Intent) param.args[0]).getBooleanExtra("alarmSet", false);
-                        Object mService = getObjectField(param.thisObject, "mService");
-                        callMethod(mService, "setIconVisibility", "alarm_clock", alarmSet);
-                        if (!alarmSet)
-                            return null;
-                        /* Why the short delay? Because some clock apps send the ALARM_CHANGED broadcast before
-                         * setting NEXT_ALARM_FORMATTED.
-                         */
-                        new Handler().postDelayed(new Runnable() {
-                            @Override
-                            public void run() {
-                                Context context = (Context) getObjectField(param.thisObject, "mContext");
-                                String nextAlarm = Settings.System.getString(context.getContentResolver(),
-                                        Settings.System.NEXT_ALARM_FORMATTED);
-                                if (!nextAlarm.isEmpty()) {
-                                    String[] nextAlarmTime = nextAlarm.split(" ")[1].split(":");
-                                    int nextAlarmHour = Integer.parseInt(nextAlarmTime[0]) % 12;
-                                    int nextAlarmMinute = Integer.parseInt(nextAlarmTime[1]);
-                                    Intent intent = new Intent(UPDATE_ALARM_ICON);
-                                    intent.putExtra("hour", nextAlarmHour);
-                                    intent.putExtra("minute", nextAlarmMinute);
-                                    context.sendBroadcast(intent);
-                                }
+        try {
+            /* Check if we are on an HTC Sense device
+             * If class HtcPhoneStatusBarPolicy exists then HTC Sense is active and we are going to hook it
+             * Otherwise we are hooking default PhoneStatusBarPolicy class
+             */
+            final Class<?> htcPhoneStatusBarPolicyClass = findClass("com.android.systemui.statusbar.phone.HtcPhoneStatusBarPolicy",
+                    classLoader);
+            findAndHookMethod(htcPhoneStatusBarPolicyClass, "updateAlarm", Intent.class, new XC_MethodHook() {
+                        @Override
+                        protected void afterHookedMethod(final MethodHookParam param) throws Throwable {
+                            boolean alarmSet = ((Intent) param.args[0]).getBooleanExtra("alarmSet", false);
+                            if (!alarmSet) {
+                                // Set mClockDrawable to null as updateAlarm removes the icon on Sense
+                                mClockDrawable = null;
+                            } else {
+                                /* Why the short delay? Because some clock apps send the ALARM_CHANGED broadcast before
+                                 * setting NEXT_ALARM_FORMATTED.
+                                 * Setting delay to 100 on HTC Sense as HTC WorldClock needs more than 50ms to
+                                 * write NEXT_ALARM_FORMATTED
+                                 */
+                                new Handler().postDelayed(updateAlarmIconRunnable, 100);
                             }
-                        }, 50);
-                        return null;
+                        }
                     }
-                }
-        );
+            );
+        } catch (ClassNotFoundError e) {
+            findAndHookMethod("com.android.systemui.statusbar.phone.PhoneStatusBarPolicy", classLoader, "updateAlarm",
+                    Intent.class, new XC_MethodReplacement() {
+                        @Override
+                        protected Object replaceHookedMethod(final MethodHookParam param) throws Throwable {
+                            boolean alarmSet = ((Intent) param.args[0]).getBooleanExtra("alarmSet", false);
+                            Object mService = getObjectField(param.thisObject, "mService");
+                            callMethod(mService, "setIconVisibility", "alarm_clock", alarmSet);
+                            if (!alarmSet)
+                                return null;
+                            /* Why the short delay? Because some clock apps send the ALARM_CHANGED broadcast before
+                             * setting NEXT_ALARM_FORMATTED.
+                             */
+                            new Handler().postDelayed(updateAlarmIconRunnable, 50);
+                            return null;
+                        }
+                    }
+            );
+        }
 
         findAndHookConstructor("com.android.systemui.statusbar.NotificationData.Entry", classLoader,
                 IBinder.class, StatusBarNotification.class, "com.android.systemui.statusbar.StatusBarIconView",
@@ -206,8 +235,8 @@ public class XposedMod implements IXposedHookLoadPackage {
 
                         IntentFilter intentFilter = new IntentFilter();
                         intentFilter.addAction(UPDATE_ALARM_ICON);
-                        Context context = (Context) getObjectField(param.thisObject, "mContext");
-                        context.registerReceiver(broadcastReceiver, intentFilter);
+                        mContext = (Context) getObjectField(param.thisObject, "mContext");
+                        mContext.registerReceiver(broadcastReceiver, intentFilter);
                     }
                 }
         );
