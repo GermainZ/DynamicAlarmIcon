@@ -7,6 +7,7 @@ import android.content.Intent;
 import android.content.IntentFilter;
 import android.graphics.Bitmap;
 import android.graphics.Canvas;
+import android.os.Build;
 import android.os.Handler;
 import android.os.IBinder;
 import android.os.Parcel;
@@ -244,15 +245,17 @@ public class XposedMod implements IXposedHookLoadPackage {
                 }
         );
 
-        findAndHookMethod("com.android.systemui.statusbar.StatusBarIconView", classLoader, "updateDrawable",
-                boolean.class, new XC_MethodHook() {
-                    @Override
-                    protected void beforeHookedMethod(MethodHookParam param) throws Throwable {
-                        if (getObjectField(param.thisObject, "mSlot").equals("alarm_clock"))
-                            param.setResult(true);
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.JELLY_BEAN_MR2) {
+            findAndHookMethod("com.android.systemui.statusbar.StatusBarIconView", classLoader, "updateDrawable",
+                    boolean.class, new XC_MethodHook() {
+                        @Override
+                        protected void beforeHookedMethod(MethodHookParam param) throws Throwable {
+                            if (getObjectField(param.thisObject, "mSlot").equals("alarm_clock"))
+                                param.setResult(true);
+                        }
                     }
-                }
-        );
+            );
+        }
     }
 
     private void hookTimely(final ClassLoader classLoader) {
