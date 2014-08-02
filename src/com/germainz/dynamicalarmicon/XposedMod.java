@@ -46,28 +46,31 @@ import de.robv.android.xposed.callbacks.XC_LoadPackage;
 public class XposedMod implements IXposedHookLoadPackage {
     private Context mContext;
     private ClockDrawable mClockDrawable;
-    private Runnable updateAlarmIconRunnable = new Runnable() {
-        @Override
-        public void run() {
-            String nextAlarm = Settings.System.getString(mContext.getContentResolver(),
-                    Settings.System.NEXT_ALARM_FORMATTED);
-            if (!nextAlarm.isEmpty()) {
-                String[] nextAlarmTime = nextAlarm.split(" ")[1].split(":");
-                int nextAlarmHour = Integer.parseInt(nextAlarmTime[0]) % 12;
-                int nextAlarmMinute = Integer.parseInt(nextAlarmTime[1]);
-                Intent intent = new Intent(UPDATE_ALARM_ICON);
-                intent.putExtra("hour", nextAlarmHour);
-                intent.putExtra("minute", nextAlarmMinute);
-                mContext.sendBroadcast(intent);
-            }
-        }
-    };
     private static final String UPDATE_ALARM_ICON = "com.germainz.dynamicalarmicon.UPDATE_ALARM_ICON";
     private static final Set<String> CLOCK_PACKAGES = new HashSet<String>(Arrays.asList(new String[]{
             "com.android.deskclock", "com.google.android.deskclock", "com.mobitobi.android.gentlealarmtrial",
             "com.mobitobi.android.gentlealarm"
     }));
     private static final Pattern TIME_PATTERN = Pattern.compile("([01]?[0-9]|2[0-3]):([0-5][0-9])");
+    private Runnable updateAlarmIconRunnable = new Runnable() {
+        @Override
+        public void run() {
+            String nextAlarm = Settings.System.getString(mContext.getContentResolver(),
+                    Settings.System.NEXT_ALARM_FORMATTED);
+            if (!nextAlarm.isEmpty()) {
+                Matcher matcher = TIME_PATTERN.matcher(nextAlarm);
+                if (matcher.find()) {
+                    String[] nextAlarmTime = TextUtils.split(matcher.group(), ":");
+                    int nextAlarmHour = Integer.parseInt(nextAlarmTime[0]);
+                    int nextAlarmMinute = Integer.parseInt(nextAlarmTime[1]);
+                    Intent intent = new Intent(UPDATE_ALARM_ICON);
+                    intent.putExtra("hour", nextAlarmHour);
+                    intent.putExtra("minute", nextAlarmMinute);
+                    mContext.sendBroadcast(intent);
+                }
+            }
+        }
+    };
 
     @Override
     public void handleLoadPackage(XC_LoadPackage.LoadPackageParam lpparam) throws Throwable {
