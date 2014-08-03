@@ -40,7 +40,7 @@ import com.larswerkman.holocolorpicker.ValueBar;
 public class Preferences extends PreferenceActivity {
     private static final String PREF_SHOW_APP_ICON = "pref_show_app_icon";
     private static final String PREF_CLOCK_STYLE = "pref_clock_style";
-    public static final String PREF_CLOCK_COLOR = "pref_clock_color";
+    private static final String PREF_CLOCK_COLOR = "pref_clock_color";
     private boolean mTextChanged = false;
 
     @Override
@@ -155,7 +155,7 @@ public class Preferences extends PreferenceActivity {
         });
     }
 
-    public String colorIntToRGB(int color) {
+    private String colorIntToRGB(int color) {
         return String.format("%08X", color);
     }
 }

@@ -26,10 +26,10 @@ public class Config {
     private static Config mInstance;
     private XSharedPreferences mXPreferences = null;
     private SharedPreferences mPreferences = null;
-    public static final String PACKAGE_NAME = "com.germainz.dynamicalarmicon";
-    public static final String PREFS = PACKAGE_NAME + "_preferences";
-    public static final String PREF_CLOCK_STYLE = "pref_clock_style";
-    public static final String PREF_CLOCK_COLOR = "pref_clock_color";
+    private static final String PACKAGE_NAME = "com.germainz.dynamicalarmicon";
+    private static final String PREFS = PACKAGE_NAME + "_preferences";
+    private static final String PREF_CLOCK_STYLE = "pref_clock_style";
+    private static final String PREF_CLOCK_COLOR = "pref_clock_color";
 
     public Config() {
         mXPreferences = new XSharedPreferences(PACKAGE_NAME, PREFS);
@@ -58,7 +58,7 @@ public class Config {
         mPreferences.edit().putInt(PREF_CLOCK_COLOR, color).apply();
     }
 
-    public String getString(String key, String defaultValue) {
+    private String getString(String key, String defaultValue) {
         String returnResult = defaultValue;
         if (mPreferences != null)
             returnResult = mPreferences.getString(key, defaultValue);
@@ -67,7 +67,7 @@ public class Config {
         return returnResult;
     }
 
-    public int getInt(String key, int defaultValue) {
+    private int getInt(String key, int defaultValue) {
         int returnResult = defaultValue;
         if (mPreferences != null)
             returnResult = mPreferences.getInt(key, defaultValue);

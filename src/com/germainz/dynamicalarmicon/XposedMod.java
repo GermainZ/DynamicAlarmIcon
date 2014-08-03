@@ -132,21 +132,14 @@ public class XposedMod implements IXposedHookLoadPackage {
                             parcel.recycle();
                         }
 
-                        Integer alarmHour;
-                        Integer alarmMinute;
                         // The time should be in the notification's text, not title.
-                        Matcher matcher = TIME_PATTERN.matcher(notificationText.get(1));
-                        if (matcher.find()) {
-                            String[] alarmTime = TextUtils.split(matcher.group(), ":");
-                            alarmHour = Integer.parseInt(alarmTime[0]);
-                            alarmMinute = Integer.parseInt(alarmTime[1]);
-                        } else {
+                        Pair<Integer, Integer> alarmTime = getTimeFromString((String) notificationText.get(1));
+                        if (alarmTime == null)
                             return;
-                        }
 
                         // Set the small icon.
                         ImageView icon = (ImageView) param.args[2];
-                        icon.setImageDrawable(getClockDrawable(alarmHour, alarmMinute));
+                        icon.setImageDrawable(getClockDrawable(alarmTime.first, alarmTime.second));
 
                         // Set the large icon (shown in the notification shade) for the normal views.
                         // The expanded view's large icon is set, if needed, in setBigContentView's hook.
@@ -156,13 +149,13 @@ public class XposedMod implements IXposedHookLoadPackage {
                                 android.R.dimen.notification_large_icon_height);
                         Bitmap bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888);
                         Canvas canvas = new Canvas(bitmap);
-                        ClockDrawable clockDrawable = getClockDrawable(alarmHour, alarmMinute);
+                        ClockDrawable clockDrawable = getClockDrawable(alarmTime.first, alarmTime.second);
                         clockDrawable.setBounds(0, 0, canvas.getWidth(), canvas.getHeight());
                         clockDrawable.draw(canvas);
                         contentView.setImageViewBitmap(android.R.id.icon, bitmap);
 
-                        setAdditionalInstanceField(param.thisObject, "hour", alarmHour);
-                        setAdditionalInstanceField(param.thisObject, "minute", alarmMinute);
+                        setAdditionalInstanceField(param.thisObject, "hour", alarmTime.first);
+                        setAdditionalInstanceField(param.thisObject, "minute", alarmTime.second);
                     }
                 }
         );
