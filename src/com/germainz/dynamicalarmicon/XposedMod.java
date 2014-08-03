@@ -279,9 +279,10 @@ public class XposedMod implements IXposedHookLoadPackage {
 
     private ClockDrawable getClockDrawable(int hour, int minute) {
         int style = mConfig.getClockStyle();
+        int color = mConfig.getClockColor();
         if (style == CLOCK_STYLE_AOSP)
-            return new ClockDrawable(hour, minute);
+            return new ClockDrawable(color, hour, minute);
         else
-            return new TouchWizClockDrawable(hour, minute);
+            return new TouchWizClockDrawable(color, hour, minute);
     }
 }

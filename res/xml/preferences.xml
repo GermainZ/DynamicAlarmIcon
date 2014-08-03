@@ -26,6 +26,10 @@
             android:data="http://forum.xda-developers.com/xposed/modules/dynamicalarmicon-t2828309"/>
     </Preference>
 
+    <Preference
+        android:key="pref_clock_color"
+        android:title="@string/pref_clock_color_title"/>
+
     <com.germainz.dynamicalarmicon.ImageListPreference
         android:key="pref_clock_style"
         android:title="@string/pref_clock_style_title"
