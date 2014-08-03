@@ -161,22 +161,29 @@ public class XposedMod implements IXposedHookLoadPackage {
                 }
         );
 
-        findAndHookMethod("com.android.systemui.statusbar.NotificationData.Entry", classLoader,
-                "setBigContentView", View.class, new XC_MethodHook() {
-                    @Override
-                    protected void beforeHookedMethod(MethodHookParam param) throws Throwable {
-                        View bigContentView = (View) param.args[0];
-                        if (bigContentView != null) {
-                            ImageView icon = (ImageView) bigContentView.findViewById(android.R.id.icon);
-                            Integer hour = (Integer) getAdditionalInstanceField(param.thisObject, "hour");
-                            if (hour != null) {
-                                Integer minute = (Integer) getAdditionalInstanceField(param.thisObject, "minute");
-                                icon.setImageDrawable(getClockDrawable(hour, minute));
-                            }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.JELLY_BEAN) {
+            XC_MethodHook hook = new XC_MethodHook() {
+                @Override
+                protected void beforeHookedMethod(MethodHookParam param) throws Throwable {
+                    View bigContentView = (View) param.args[0];
+                    if (bigContentView != null) {
+                        ImageView icon = (ImageView) bigContentView.findViewById(android.R.id.icon);
+                        Integer hour = (Integer) getAdditionalInstanceField(param.thisObject, "hour");
+                        if (hour != null) {
+                            Integer minute = (Integer) getAdditionalInstanceField(param.thisObject, "minute");
+                            icon.setImageDrawable(getClockDrawable(hour, minute));
                         }
                     }
                 }
-        );
+            };
+
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.KITKAT)
+                findAndHookMethod("com.android.systemui.statusbar.NotificationData.Entry", classLoader,
+                        "setBigContentView", View.class, hook);
+            else
+                findAndHookMethod("com.android.systemui.statusbar.NotificationData.Entry", classLoader,
+                        "setLargeView", View.class, hook);
+        }
 
         findAndHookMethod("com.android.systemui.statusbar.phone.PhoneStatusBar", classLoader, "makeStatusBarView",
                 new XC_MethodHook() {
