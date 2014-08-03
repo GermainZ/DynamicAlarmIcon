@@ -31,17 +31,19 @@ class TouchWizClockDrawable extends ClockDrawable {
         float height = getBounds().height() * .9f;
         float x = width / 2;
         float y = height / 2 + height / 10;
-        float radius = height / 3.2f;
+        float radius = height / 2.7f;
 
-		/* Clock's circle outline and middle dot */
+        /* Clock's circle outline and middle dot */
         mPaint.setStyle(Paint.Style.STROKE);
-        mPaint.setStrokeWidth(radius / 3f);
+        mPaint.setStrokeWidth(radius / 3.4f);
         canvas.drawCircle(x, y, radius, mPaint);
         canvas.drawPoint(x, y, mPaint);
 
         mPaint.setStyle(Paint.Style.FILL_AND_STROKE);
 
+
         /* Draw hands */
+        mPaint.setStrokeWidth(radius / 3.8f);
         float stopX = (float) (x + (radius * .5) * Math.cos(Math.toRadians(mHourAngle - 90)));
         float stopY = (float) (y + (radius * .5) * Math.sin(Math.toRadians(mHourAngle - 90)));
         canvas.drawLine(x, y, stopX, stopY, mPaint);
@@ -50,18 +52,19 @@ class TouchWizClockDrawable extends ClockDrawable {
         stopY = (float) (y + (radius * .7) * Math.sin(Math.toRadians(mMinuteAngle - 90)));
         canvas.drawLine(x, y, stopX, stopY, mPaint);
 
-		/* Draw bells */
+        /* Draw bells */
+        mPaint.setStrokeWidth(radius / 3.0f);
         final float afterRadius = radius * 1.5f;
         RectF rectF = new RectF(x - afterRadius, y - afterRadius, x + afterRadius, y + afterRadius);
-        canvas.drawArc(rectF, 220, 30, false, mPaint);
-        canvas.drawArc(rectF, 290, 30, false, mPaint);
+        canvas.drawArc(rectF, 212, 30, false, mPaint);
+        canvas.drawArc(rectF, 298, 30, false, mPaint);
 
         /* Draw legs */
-        float startX = (float) (x + radius * Math.cos(Math.toRadians(60)));
-        float startY = (float) (y + radius * Math.sin(Math.toRadians(60)));
-        canvas.drawLine(startX, startY, startX * 1.12f, startY * 1.12f, mPaint);
-        startX = (float) (x + radius * Math.cos(Math.toRadians(120)));
-        startY = (float) (y + radius * Math.sin(Math.toRadians(120)));
-        canvas.drawLine(startX, startY, startX * 0.88f, startY * 1.12f, mPaint);
+        float diffX = (float) (radius * Math.cos(Math.toRadians(52)));
+        float diffY = (float) (radius * Math.sin(Math.toRadians(52)));
+        canvas.drawLine(x + diffX, y + diffY, x + diffX * 1.45f, y + diffY * 1.45f, mPaint);
+        diffX = (float) (radius * Math.cos(Math.toRadians(180 - 52)));
+        diffY = (float) (radius * Math.sin(Math.toRadians(180 - 52)));
+        canvas.drawLine(x + diffX, y + diffY, x + diffX * 1.45f, y + diffY * 1.45f, mPaint);
     }
 }
