@@ -17,7 +17,10 @@
 package com.germainz.dynamicalarmicon;
 
 import android.app.Notification;
+import android.content.BroadcastReceiver;
 import android.content.Context;
+import android.content.Intent;
+import android.content.IntentFilter;
 import android.database.ContentObserver;
 import android.graphics.Bitmap;
 import android.graphics.Canvas;
@@ -31,6 +34,7 @@ import android.provider.Settings;
 import android.service.notification.StatusBarNotification;
 import android.text.TextUtils;
 import android.text.format.DateFormat;
+import android.util.Pair;
 import android.view.View;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
@@ -55,6 +59,7 @@ import static de.robv.android.xposed.XposedHelpers.setAdditionalInstanceField;
 
 import de.robv.android.xposed.IXposedHookLoadPackage;
 import de.robv.android.xposed.XC_MethodHook;
+import de.robv.android.xposed.XposedBridge;
 import de.robv.android.xposed.callbacks.XC_LoadPackage;
 
 public class XposedMod implements IXposedHookLoadPackage {
@@ -67,6 +72,7 @@ public class XposedMod implements IXposedHookLoadPackage {
             "com.mobitobi.android.gentlealarm"
     }));
     private static final Pattern TIME_PATTERN = Pattern.compile("([01]?[0-9]|2[0-3]):([0-5][0-9])");
+    private static final String START_UP_INTENT = "com.germainz.dynamicalarmicon.START_UP";
     private static final int CLOCK_STYLE_AOSP = 0;
     private static final int CLOCK_STYLE_TOUCHWIZ = 1;
 
@@ -193,28 +199,23 @@ public class XposedMod implements IXposedHookLoadPackage {
                         mNextAlarmObserver = new ContentObserver(new Handler()) {
                             @Override
                             public void onChange(boolean selfChange) {
-                                String nextAlarm = Settings.System.getString(mContext.getContentResolver(),
-                                        Settings.System.NEXT_ALARM_FORMATTED);
-                                if (nextAlarm.isEmpty()) {
-                                    /* Some vendors (e.g. HTC) seem to remove the alarm_clock status bar icon
-                                     * instead of toggling its visibility, so we'll need to look for it again in
-                                     * updateAlarmIcon next time an alarm is set.
-                                     */
-                                    mClockDrawable = null;
-                                } else {
-                                    Matcher matcher = TIME_PATTERN.matcher(nextAlarm);
-                                    if (matcher.find()) {
-                                        String[] nextAlarmTime = TextUtils.split(matcher.group(), ":");
-                                        int nextAlarmHour = Integer.parseInt(nextAlarmTime[0]);
-                                        int nextAlarmMinute = Integer.parseInt(nextAlarmTime[1]);
-                                        updateAlarmIcon(nextAlarmHour, nextAlarmMinute, param.thisObject);
-                                    }
-                                }
+                                updateAlarmIcon(param.thisObject);
+                            }
+                        };
+
+                        // Only needed on start up.
+                        BroadcastReceiver startUpReceiver = new BroadcastReceiver() {
+                            @Override
+                            public void onReceive(Context context, Intent intent) {
+                                updateAlarmIcon(param.thisObject);
+                                mContext.unregisterReceiver(this);
                             }
                         };
 
                         mContext = (Context) getObjectField(param.thisObject, "mContext");
                         mContext.getContentResolver().registerContentObserver(nextAlarmUri, false, mNextAlarmObserver);
+                        IntentFilter intentFilter = new IntentFilter(START_UP_INTENT);
+                        mContext.registerReceiver(startUpReceiver, intentFilter);
                     }
                 }
         );
@@ -224,6 +225,16 @@ public class XposedMod implements IXposedHookLoadPackage {
                     @Override
                     protected void afterHookedMethod(final MethodHookParam param) throws Throwable {
                         mContext.getContentResolver().unregisterContentObserver(mNextAlarmObserver);
+                    }
+                }
+        );
+
+        findAndHookConstructor("com.android.systemui.statusbar.phone.PhoneStatusBarPolicy", classLoader, Context.class,
+                new XC_MethodHook() {
+                    @Override
+                    protected void afterHookedMethod(MethodHookParam param) throws Throwable {
+                        // For when the device first starts up.
+                        ((Context) param.args[0]).sendBroadcast(new Intent(START_UP_INTENT));
                     }
                 }
         );
@@ -269,18 +280,44 @@ public class XposedMod implements IXposedHookLoadPackage {
         );
     }
 
-    private void updateAlarmIcon(int hour, int minute, Object thiz) {
-        if (mClockDrawable == null) {
-            LinearLayout statusIcons = (LinearLayout) getObjectField(thiz, "mStatusIcons");
-            for (int i = 0; i < statusIcons.getChildCount(); i++) {
-                View view = statusIcons.getChildAt(i);
-                if (getObjectField(view, "mSlot").equals("alarm_clock")) {
-                    mClockDrawable = getClockDrawable(hour, minute);
-                    callMethod(view, "setImageDrawable", mClockDrawable);
-                }
-            }
+    private Pair<Integer, Integer> getTimeFromString(String s) {
+        Matcher matcher = TIME_PATTERN.matcher(s);
+        if (matcher.find()) {
+            XposedBridge.log("Match found: '" + matcher.group() + "'");
+            String[] nextAlarmTime = TextUtils.split(matcher.group(), ":");
+            int nextAlarmHour = Integer.parseInt(nextAlarmTime[0]);
+            int nextAlarmMinute = Integer.parseInt(nextAlarmTime[1]);
+            return new Pair<Integer, Integer>(nextAlarmHour, nextAlarmMinute);
+        }
+        return null;
+    }
+
+    private void updateAlarmIcon(Object thiz) {
+        String nextAlarm = Settings.System.getString(mContext.getContentResolver(),
+                Settings.System.NEXT_ALARM_FORMATTED);
+        XposedBridge.log("nextAlarm: " + nextAlarm);
+        if (nextAlarm.isEmpty()) {
+            /* Some vendors (e.g. HTC) seem to remove the alarm_clock status bar icon
+             * instead of toggling its visibility, so we'll need to look for it again in
+             * updateAlarmIcon next time an alarm is set.
+             */
+            mClockDrawable = null;
         } else {
-            mClockDrawable.setTime(hour, minute);
+            Pair<Integer, Integer> nextAlarmTime = getTimeFromString(nextAlarm);
+            if (nextAlarmTime == null)
+                return;
+            if (mClockDrawable == null) {
+                LinearLayout statusIcons = (LinearLayout) getObjectField(thiz, "mStatusIcons");
+                for (int i = 0; i < statusIcons.getChildCount(); i++) {
+                    View view = statusIcons.getChildAt(i);
+                    if (getObjectField(view, "mSlot").equals("alarm_clock")) {
+                        mClockDrawable = getClockDrawable(nextAlarmTime.first, nextAlarmTime.second);
+                        callMethod(view, "setImageDrawable", mClockDrawable);
+                    }
+                }
+            } else {
+                mClockDrawable.setTime(nextAlarmTime.first, nextAlarmTime.second);
+            }
         }
     }
 
