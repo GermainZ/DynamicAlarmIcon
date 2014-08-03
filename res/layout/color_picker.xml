@@ -76,27 +76,12 @@
         android:textAllCaps="true"
         android:textStyle="bold"/>
 
-    <LinearLayout
+    <EditText
+        android:id="@+id/value"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_gravity="center">
-
-        <EditText
-            android:id="@+id/value"
-            android:layout_width="0dip"
-            android:layout_weight=".75"
-            android:layout_height="wrap_content"
-            android:inputType="textNoSuggestions"
-            android:maxLength="8"
-            android:textAllCaps="true"/>
-
-        <Button
-            android:id="@+id/apply_value"
-            android:layout_width="0dip"
-            android:layout_weight=".25"
-            android:layout_height="wrap_content"
-            android:text="@string/apply"/>
-
-    </LinearLayout>
+        android:inputType="textNoSuggestions"
+        android:maxLength="8"
+        android:textAllCaps="true"/>
 
 </LinearLayout>

@@ -24,10 +24,11 @@ import android.graphics.Color;
 import android.os.Bundle;
 import android.preference.Preference;
 import android.preference.PreferenceActivity;
+import android.text.Editable;
+import android.text.TextWatcher;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
-import android.widget.Button;
 import android.widget.TextView;
 import android.widget.Toast;
 
@@ -40,6 +41,7 @@ public class Preferences extends PreferenceActivity {
     private static final String PREF_SHOW_APP_ICON = "pref_show_app_icon";
     private static final String PREF_CLOCK_STYLE = "pref_clock_style";
     public static final String PREF_CLOCK_COLOR = "pref_clock_color";
+    private boolean mTextChanged = false;
 
     @Override
     public void onCreate(Bundle savedInstanceState) {
@@ -70,10 +72,9 @@ public class Preferences extends PreferenceActivity {
 
                 final ColorPicker colorPicker = (ColorPicker) colorPickerView.findViewById(R.id.picker);
                 SaturationBar saturationBar = (SaturationBar) colorPickerView.findViewById(R.id.saturationbar);
-                ValueBar valueBar = (ValueBar) colorPickerView.findViewById(R.id.valuebar);
+                final ValueBar valueBar = (ValueBar) colorPickerView.findViewById(R.id.valuebar);
                 final OpacityBar opacityBar = (OpacityBar) colorPickerView.findViewById(R.id.opacitybar);
                 final TextView valueTextView = (TextView) colorPickerView.findViewById(R.id.value);
-                Button applyButton = (Button) colorPickerView.findViewById(R.id.apply_value);
 
                 colorPicker.addSaturationBar(saturationBar);
                 colorPicker.addValueBar(valueBar);
@@ -86,21 +87,34 @@ public class Preferences extends PreferenceActivity {
                 colorPicker.setOnColorChangedListener(new ColorPicker.OnColorChangedListener() {
                     @Override
                     public void onColorChanged(int color) {
+                        mTextChanged = true;
                         valueTextView.setText(colorIntToRGB(color));
                     }
                 });
 
-                applyButton.setOnClickListener(new View.OnClickListener() {
+                valueTextView.addTextChangedListener(new TextWatcher() {
                     @Override
-                    public void onClick(View view) {
-                        String value = "#" + valueTextView.getText().toString();
-                        try {
-                            int color = Color.parseColor(value);
-                            colorPicker.setColor(color);
-                        } catch (IllegalArgumentException e) {
-                            Toast.makeText(Preferences.this, getString(R.string.invalid_color),
-                                    Toast.LENGTH_SHORT).show();
+                    public void beforeTextChanged(CharSequence text, int start, int count, int after) {
+                    }
+
+                    @Override
+                    public void onTextChanged(CharSequence text, int start, int before, int count) {
+                        if (mTextChanged)
+                            mTextChanged = false;
+                        else if (text.length() == 8) {
+                            String value = "#" + text;
+                            try {
+                                int color = Color.parseColor(value);
+                                colorPicker.setColor(color);
+                            } catch (IllegalArgumentException e) {
+                                Toast.makeText(Preferences.this, getString(R.string.invalid_color),
+                                        Toast.LENGTH_SHORT).show();
+                            }
                         }
+                    }
+
+                    @Override
+                    public void afterTextChanged(Editable text) {
                     }
                 });
 
