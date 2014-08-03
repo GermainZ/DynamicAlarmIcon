@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<PreferenceScreen xmlns:android="http://schemas.android.com/apk/res/android"
+                  xmlns:app="http://schemas.android.com/apk/res/com.germainz.dynamicalarmicon">
+    <Preference
+        android:key="pref_support"
+        android:title="@string/pref_support_title"
+        android:summary="@string/pref_support_summary">
+        <intent
+            android:action="android.intent.action.VIEW"
+            android:data="http://forum.xda-developers.com/xposed/modules/dynamicalarmicon-t2828309"/>
+    </Preference>
+
+    <com.germainz.dynamicalarmicon.ImageListPreference
+        android:key="pref_clock_style"
+        android:title="@string/pref_clock_style_title"
+        android:entries="@array/clock_style_entries"
+        android:entryValues="@array/clock_style_values"
+        app:entryImages="@array/clock_style_icons"
+        android:defaultValue="0"/>
+
+    <CheckBoxPreference
+        android:defaultValue="true"
+        android:key="pref_show_app_icon"
+        android:title="@string/pref_show_app_icon_title"/>
+</PreferenceScreen>

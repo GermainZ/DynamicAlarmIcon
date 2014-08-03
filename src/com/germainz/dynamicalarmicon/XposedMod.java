@@ -45,18 +45,23 @@ public class XposedMod implements IXposedHookLoadPackage {
     private Context mContext;
     private ClockDrawable mClockDrawable;
     private ContentObserver mNextAlarmObserver;
+    private Config mConfig;
     private static final Set<String> CLOCK_PACKAGES = new HashSet<String>(Arrays.asList(new String[]{
             "com.android.deskclock", "com.google.android.deskclock", "com.mobitobi.android.gentlealarmtrial",
             "com.mobitobi.android.gentlealarm"
     }));
     private static final Pattern TIME_PATTERN = Pattern.compile("([01]?[0-9]|2[0-3]):([0-5][0-9])");
+    private static final int CLOCK_STYLE_AOSP = 0;
+    private static final int CLOCK_STYLE_TOUCHWIZ = 1;
 
     @Override
     public void handleLoadPackage(XC_LoadPackage.LoadPackageParam lpparam) throws Throwable {
-        if (lpparam.packageName.equals("com.android.systemui"))
+        if (lpparam.packageName.equals("com.android.systemui")) {
+            mConfig = new Config();
             hookSystemUI(lpparam.classLoader);
-        else if (lpparam.packageName.equals("ch.bitspin.timely"))
+        } else if (lpparam.packageName.equals("ch.bitspin.timely")) {
             hookTimely(lpparam.classLoader);
+        }
     }
 
     private void hookSystemUI(final ClassLoader classLoader) {
@@ -119,7 +124,7 @@ public class XposedMod implements IXposedHookLoadPackage {
 
                         // Set the small icon.
                         ImageView icon = (ImageView) param.args[2];
-                        icon.setImageDrawable(new ClockDrawable(alarmHour, alarmMinute));
+                        icon.setImageDrawable(getClockDrawable(alarmHour, alarmMinute));
 
                         // Set the large icon (shown in the notification shade) for the normal views.
                         // The expanded view's large icon is set, if needed, in setBigContentView's hook.
@@ -129,7 +134,7 @@ public class XposedMod implements IXposedHookLoadPackage {
                                 android.R.dimen.notification_large_icon_height);
                         Bitmap bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888);
                         Canvas canvas = new Canvas(bitmap);
-                        ClockDrawable clockDrawable = new ClockDrawable(alarmHour, alarmMinute);
+                        ClockDrawable clockDrawable = getClockDrawable(alarmHour, alarmMinute);
                         clockDrawable.setBounds(0, 0, canvas.getWidth(), canvas.getHeight());
                         clockDrawable.draw(canvas);
                         contentView.setImageViewBitmap(android.R.id.icon, bitmap);
@@ -150,7 +155,7 @@ public class XposedMod implements IXposedHookLoadPackage {
                             Integer hour = (Integer) getAdditionalInstanceField(param.thisObject, "hour");
                             if (hour != null) {
                                 Integer minute = (Integer) getAdditionalInstanceField(param.thisObject, "minute");
-                                icon.setImageDrawable(new ClockDrawable(hour, minute));
+                                icon.setImageDrawable(getClockDrawable(hour, minute));
                             }
                         }
                     }
@@ -247,12 +252,20 @@ public class XposedMod implements IXposedHookLoadPackage {
             for (int i = 0; i < statusIcons.getChildCount(); i++) {
                 View view = statusIcons.getChildAt(i);
                 if (getObjectField(view, "mSlot").equals("alarm_clock")) {
-                    mClockDrawable = new ClockDrawable(hour, minute);
+                    mClockDrawable = getClockDrawable(hour, minute);
                     callMethod(view, "setImageDrawable", mClockDrawable);
                 }
             }
         } else {
             mClockDrawable.setTime(hour, minute);
         }
+    }
+
+    private ClockDrawable getClockDrawable(int hour, int minute) {
+        int style = mConfig.getClockStyle();
+        if (style == CLOCK_STYLE_AOSP)
+            return new ClockDrawable(hour, minute);
+        else
+            return new TouchWizClockDrawable(hour, minute);
     }
 }

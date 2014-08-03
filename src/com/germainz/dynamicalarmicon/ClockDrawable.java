@@ -8,11 +8,11 @@ import android.graphics.PixelFormat;
 import android.graphics.RectF;
 import android.graphics.drawable.Drawable;
 
-public class ClockDrawable extends Drawable {
+class ClockDrawable extends Drawable {
 
-    private final Paint mPaint;
-    private int mHourAngle;
-    private int mMinuteAngle;
+    final Paint mPaint;
+    int mHourAngle;
+    int mMinuteAngle;
 
     public ClockDrawable(int hours, int minutes) {
         mPaint = new Paint();
