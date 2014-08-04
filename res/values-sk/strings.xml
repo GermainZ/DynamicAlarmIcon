@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="xposed_description">Ikona budíka zobrazuje nastavený čas</string>
+    <string name="pref_support_title">Podpora</string>
+    <string name="pref_support_summary">DynamicAlarmIcon od GermainZ</string>
+    <string name="pref_clock_style_title">Štýl hodín</string>
+    <string name="pref_clock_color_title">Farba hodín</string>
+    <string name="pref_show_app_icon_title">Zobraziť ikonu v menu aplikácií</string>
+    <string name="clock_style_aosp">AOSP</string>
+    <string name="clock_style_touchwiz">TouchWiz</string>
+    <string name="dialog_ok">Potvrdiť</string>
+    <string name="dialog_cancel">Zrušiť</string>
+    <string name="saturation">Sýtosť</string>
+    <string name="value">Hodnota</string>
+    <string name="opacity">Priehľadnosť</string>
+    <string name="hex">Farba (Hex)</string>
+    <string name="apply">Použiť</string>
+    <string name="invalid_color">Neplatná farba</string>
+</resources>
