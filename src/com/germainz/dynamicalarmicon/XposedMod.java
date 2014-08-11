@@ -59,7 +59,6 @@ import static de.robv.android.xposed.XposedHelpers.setAdditionalInstanceField;
 
 import de.robv.android.xposed.IXposedHookLoadPackage;
 import de.robv.android.xposed.XC_MethodHook;
-import de.robv.android.xposed.XposedBridge;
 import de.robv.android.xposed.callbacks.XC_LoadPackage;
 
 public class XposedMod implements IXposedHookLoadPackage {
@@ -87,8 +86,13 @@ public class XposedMod implements IXposedHookLoadPackage {
     }
 
     private void hookSystemUI(final ClassLoader classLoader) {
+        Object statusBarNotificationClass;
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.JELLY_BEAN_MR2)
+            statusBarNotificationClass = StatusBarNotification.class;
+        else
+            statusBarNotificationClass = "com.android.internal.statusbar.StatusBarNotification";
         findAndHookConstructor("com.android.systemui.statusbar.NotificationData.Entry", classLoader,
-                IBinder.class, StatusBarNotification.class, "com.android.systemui.statusbar.StatusBarIconView",
+                IBinder.class, statusBarNotificationClass, "com.android.systemui.statusbar.StatusBarIconView",
                 new XC_MethodHook() {
                     @Override
                     protected void beforeHookedMethod(MethodHookParam param) throws Throwable {
@@ -213,14 +217,16 @@ public class XposedMod implements IXposedHookLoadPackage {
                 }
         );
 
-        findAndHookMethod("com.android.systemui.statusbar.phone.PhoneStatusBar", classLoader, "destroy",
-                new XC_MethodHook() {
-                    @Override
-                    protected void afterHookedMethod(final MethodHookParam param) throws Throwable {
-                        mContext.getContentResolver().unregisterContentObserver(mNextAlarmObserver);
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.KITKAT) {
+            findAndHookMethod("com.android.systemui.statusbar.phone.PhoneStatusBar", classLoader, "destroy",
+                    new XC_MethodHook() {
+                        @Override
+                        protected void afterHookedMethod(final MethodHookParam param) throws Throwable {
+                            mContext.getContentResolver().unregisterContentObserver(mNextAlarmObserver);
+                        }
                     }
-                }
-        );
+            );
+        }
 
         findAndHookConstructor("com.android.systemui.statusbar.phone.PhoneStatusBarPolicy", classLoader, Context.class,
                 new XC_MethodHook() {
@@ -276,7 +282,6 @@ public class XposedMod implements IXposedHookLoadPackage {
     private Pair<Integer, Integer> getTimeFromString(String s) {
         Matcher matcher = TIME_PATTERN.matcher(s);
         if (matcher.find()) {
-            XposedBridge.log("Match found: '" + matcher.group() + "'");
             String[] nextAlarmTime = TextUtils.split(matcher.group(), ":");
             int nextAlarmHour = Integer.parseInt(nextAlarmTime[0]);
             int nextAlarmMinute = Integer.parseInt(nextAlarmTime[1]);
@@ -288,7 +293,6 @@ public class XposedMod implements IXposedHookLoadPackage {
     private void updateAlarmIcon(Object thiz) {
         String nextAlarm = Settings.System.getString(mContext.getContentResolver(),
                 Settings.System.NEXT_ALARM_FORMATTED);
-        XposedBridge.log("nextAlarm: " + nextAlarm);
         if (nextAlarm.isEmpty()) {
             /* Some vendors (e.g. HTC) seem to remove the alarm_clock status bar icon
              * instead of toggling its visibility, so we'll need to look for it again in
