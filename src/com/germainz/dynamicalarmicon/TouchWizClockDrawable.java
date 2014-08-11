@@ -31,7 +31,7 @@ class TouchWizClockDrawable extends ClockDrawable {
         float height = getBounds().height() * .9f;
         float x = width / 2;
         float y = height / 2 + height / 10;
-        float radius = height / 2.7f;
+        float radius = height / 3.55f;
 
         /* Clock's circle outline and middle dot */
         mPaint.setStyle(Paint.Style.STROKE);
@@ -43,7 +43,7 @@ class TouchWizClockDrawable extends ClockDrawable {
 
 
         /* Draw hands */
-        mPaint.setStrokeWidth(radius / 3.8f);
+        mPaint.setStrokeWidth(radius / 4f);
         float stopX = (float) (x + (radius * .5) * Math.cos(Math.toRadians(mHourAngle - 90)));
         float stopY = (float) (y + (radius * .5) * Math.sin(Math.toRadians(mHourAngle - 90)));
         canvas.drawLine(x, y, stopX, stopY, mPaint);
