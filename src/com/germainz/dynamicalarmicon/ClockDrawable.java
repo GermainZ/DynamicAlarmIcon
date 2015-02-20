@@ -33,7 +33,7 @@ public class ClockDrawable extends Drawable {
 
 		/* Clock's circle outline and middle dot */
         mPaint.setStyle(Paint.Style.STROKE);
-        mPaint.setStrokeWidth(radius / 7f);
+        mPaint.setStrokeWidth(radius / (XposedMod.IS_LOLLIPOP_OR_ABOVE ? 5f : 7f));
         canvas.drawCircle(x, y, radius, mPaint);
         canvas.drawCircle(x, y, radius / 20f, mPaint);
 

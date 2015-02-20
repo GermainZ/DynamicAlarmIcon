@@ -1,14 +1,20 @@
 package com.germainz.dynamicalarmicon;
 
+import android.annotation.TargetApi;
+import android.app.AlarmManager;
 import android.app.Notification;
+import android.content.BroadcastReceiver;
 import android.content.Context;
+import android.content.Intent;
+import android.content.IntentFilter;
+import android.content.res.Resources;
 import android.database.ContentObserver;
 import android.graphics.Bitmap;
 import android.graphics.Canvas;
+import android.graphics.PorterDuff;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Handler;
-import android.os.IBinder;
 import android.os.Parcel;
 import android.os.Parcelable;
 import android.provider.Settings;
@@ -19,14 +25,22 @@ import android.view.View;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.RemoteViews;
+import android.widget.TextView;
 
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Calendar;
+import java.util.Date;
+import java.util.GregorianCalendar;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+
+import de.robv.android.xposed.IXposedHookLoadPackage;
+import de.robv.android.xposed.XC_MethodHook;
+import de.robv.android.xposed.callbacks.XC_LoadPackage;
 
 import static de.robv.android.xposed.XposedHelpers.callMethod;
 import static de.robv.android.xposed.XposedHelpers.callStaticMethod;
@@ -34,22 +48,25 @@ import static de.robv.android.xposed.XposedHelpers.findAndHookConstructor;
 import static de.robv.android.xposed.XposedHelpers.findAndHookMethod;
 import static de.robv.android.xposed.XposedHelpers.findClass;
 import static de.robv.android.xposed.XposedHelpers.getAdditionalInstanceField;
+import static de.robv.android.xposed.XposedHelpers.getIntField;
 import static de.robv.android.xposed.XposedHelpers.getObjectField;
 import static de.robv.android.xposed.XposedHelpers.setAdditionalInstanceField;
-
-import de.robv.android.xposed.IXposedHookLoadPackage;
-import de.robv.android.xposed.XC_MethodHook;
-import de.robv.android.xposed.callbacks.XC_LoadPackage;
 
 public class XposedMod implements IXposedHookLoadPackage {
     private Context mContext;
     private ClockDrawable mClockDrawable;
+    private ClockDrawable mClockDrawableStatusbar;
     private ContentObserver mNextAlarmObserver;
+    private BroadcastReceiver mNextAlarmChangedReceiver;
+    private AlarmManager mAlarmManager;
     private static final Set<String> CLOCK_PACKAGES = new HashSet<String>(Arrays.asList(new String[]{
             "com.android.deskclock", "com.google.android.deskclock", "com.mobitobi.android.gentlealarmtrial",
             "com.mobitobi.android.gentlealarm"
     }));
     private static final Pattern TIME_PATTERN = Pattern.compile("([01]?[0-9]|2[0-3]):([0-5][0-9])");
+    public static final boolean IS_LOLLIPOP_OR_ABOVE = Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP;
+    private static final int SBNIDX = IS_LOLLIPOP_OR_ABOVE ? 0 : 1;
+    private static final int SBNIIDX = IS_LOLLIPOP_OR_ABOVE ? 1 : 2;
 
     @Override
     public void handleLoadPackage(XC_LoadPackage.LoadPackageParam lpparam) throws Throwable {
@@ -61,11 +78,11 @@ public class XposedMod implements IXposedHookLoadPackage {
 
     private void hookSystemUI(final ClassLoader classLoader) {
         findAndHookConstructor("com.android.systemui.statusbar.NotificationData.Entry", classLoader,
-                IBinder.class, StatusBarNotification.class, "com.android.systemui.statusbar.StatusBarIconView",
+                StatusBarNotification.class, "com.android.systemui.statusbar.StatusBarIconView",
                 new XC_MethodHook() {
                     @Override
                     protected void beforeHookedMethod(MethodHookParam param) throws Throwable {
-                        Object notification = param.args[1];
+                        Object notification = param.args[SBNIDX];
                         String packageName = (String) getObjectField(notification, "pkg");
                         if (!CLOCK_PACKAGES.contains(packageName))
                             return;
@@ -105,20 +122,24 @@ public class XposedMod implements IXposedHookLoadPackage {
                             parcel.recycle();
                         }
 
-                        Integer alarmHour;
-                        Integer alarmMinute;
-                        // The time should be in the notification's text, not title.
-                        Matcher matcher = TIME_PATTERN.matcher(notificationText.get(1));
-                        if (matcher.find()) {
-                            String[] alarmTime = TextUtils.split(matcher.group(), ":");
-                            alarmHour = Integer.parseInt(alarmTime[0]);
-                            alarmMinute = Integer.parseInt(alarmTime[1]);
-                        } else {
-                            return;
+                        /* dynamically find the alarm time since it's place is different from KK to L */
+                        Integer alarmHour = null;
+                        Integer alarmMinute = null;
+                        for (CharSequence txt : notificationText) {
+                            if (TextUtils.isEmpty(txt)) continue;
+                            Matcher matcher = TIME_PATTERN.matcher(txt);
+                            if (matcher.find()) {
+                                String[] alarmTime = TextUtils.split(matcher.group(), ":");
+                                alarmHour = Integer.parseInt(alarmTime[0]);
+                                alarmMinute = Integer.parseInt(alarmTime[1]);
+                            }
                         }
 
+                        if (alarmHour == null)
+                            return;
+
                         // Set the small icon.
-                        ImageView icon = (ImageView) param.args[2];
+                        ImageView icon = (ImageView) param.args[SBNIIDX];
                         icon.setImageDrawable(new ClockDrawable(alarmHour, alarmMinute));
 
                         // Set the large icon (shown in the notification shade) for the normal views.
@@ -159,34 +180,58 @@ public class XposedMod implements IXposedHookLoadPackage {
 
         findAndHookMethod("com.android.systemui.statusbar.phone.PhoneStatusBar", classLoader, "makeStatusBarView",
                 new XC_MethodHook() {
+                    @TargetApi(Build.VERSION_CODES.LOLLIPOP)
                     @Override
                     protected void afterHookedMethod(final MethodHookParam param) throws Throwable {
-                        Uri nextAlarmUri = Settings.System.getUriFor(Settings.System.NEXT_ALARM_FORMATTED);
-                        mNextAlarmObserver = new ContentObserver(new Handler()) {
-                            @Override
-                            public void onChange(boolean selfChange) {
-                                String nextAlarm = Settings.System.getString(mContext.getContentResolver(),
-                                        Settings.System.NEXT_ALARM_FORMATTED);
-                                if (nextAlarm.isEmpty()) {
+                        mContext = (Context) getObjectField(param.thisObject, "mContext");
+                        /* Beginning with Android Lollipop NEXT_ALARM_FORMATTED has been depreciated
+                         * instead we need to register a broadcast receiver to receive an intent
+                         * with action ACTION_NEXT_ALARM_CLOCK_CHANGED
+                         */
+                        if (IS_LOLLIPOP_OR_ABOVE) {
+                            IntentFilter filter = new IntentFilter();
+                            filter.addAction(AlarmManager.ACTION_NEXT_ALARM_CLOCK_CHANGED);
+                            mNextAlarmChangedReceiver = new BroadcastReceiver() {
+                                @TargetApi(Build.VERSION_CODES.LOLLIPOP)
+                                @Override
+                                public void onReceive(Context context, Intent intent) {
+                                    if (mAlarmManager == null) {
+                                        mAlarmManager = (AlarmManager) context.getSystemService(Context.ALARM_SERVICE);
+                                    }
+                                    AlarmManager.AlarmClockInfo mNextAlarm = mAlarmManager.getNextAlarmClock();
+                                    if (mNextAlarm == null) return;
+                                    Calendar calendar = GregorianCalendar.getInstance();
+                                    calendar.setTime(new Date(mNextAlarm.getTriggerTime()));
+                                    updateAlarmIcon(calendar.get(Calendar.HOUR), calendar.get(Calendar.MINUTE), param.thisObject);
+                                }
+                            };
+                            mContext.registerReceiver(mNextAlarmChangedReceiver, filter);
+                        } else {
+                            Uri nextAlarmUri = Settings.System.getUriFor(Settings.System.NEXT_ALARM_FORMATTED);
+                            mNextAlarmObserver = new ContentObserver(new Handler()) {
+                                @Override
+                                public void onChange(boolean selfChange) {
+                                    String nextAlarm = Settings.System.getString(mContext.getContentResolver(),
+                                            Settings.System.NEXT_ALARM_FORMATTED);
+                                    if (nextAlarm.isEmpty()) {
                                     /* Some vendors (e.g. HTC) seem to remove the alarm_clock status bar icon
                                      * instead of toggling its visibility, so we'll need to look for it again in
                                      * updateAlarmIcon next time an alarm is set.
                                      */
-                                    mClockDrawable = null;
-                                } else {
-                                    Matcher matcher = TIME_PATTERN.matcher(nextAlarm);
-                                    if (matcher.find()) {
-                                        String[] nextAlarmTime = TextUtils.split(matcher.group(), ":");
-                                        int nextAlarmHour = Integer.parseInt(nextAlarmTime[0]);
-                                        int nextAlarmMinute = Integer.parseInt(nextAlarmTime[1]);
-                                        updateAlarmIcon(nextAlarmHour, nextAlarmMinute, param.thisObject);
+                                        mClockDrawable = null;
+                                    } else {
+                                        Matcher matcher = TIME_PATTERN.matcher(nextAlarm);
+                                        if (matcher.find()) {
+                                            String[] nextAlarmTime = TextUtils.split(matcher.group(), ":");
+                                            int nextAlarmHour = Integer.parseInt(nextAlarmTime[0]);
+                                            int nextAlarmMinute = Integer.parseInt(nextAlarmTime[1]);
+                                            updateAlarmIcon(nextAlarmHour, nextAlarmMinute, param.thisObject);
+                                        }
                                     }
                                 }
-                            }
-                        };
-
-                        mContext = (Context) getObjectField(param.thisObject, "mContext");
-                        mContext.getContentResolver().registerContentObserver(nextAlarmUri, false, mNextAlarmObserver);
+                            };
+                            mContext.getContentResolver().registerContentObserver(nextAlarmUri, false, mNextAlarmObserver);
+                        }
                     }
                 }
         );
@@ -195,7 +240,11 @@ public class XposedMod implements IXposedHookLoadPackage {
                 new XC_MethodHook() {
                     @Override
                     protected void afterHookedMethod(final MethodHookParam param) throws Throwable {
-                        mContext.getContentResolver().unregisterContentObserver(mNextAlarmObserver);
+                        if (IS_LOLLIPOP_OR_ABOVE) {
+                            mContext.unregisterReceiver(mNextAlarmChangedReceiver);
+                        } else {
+                            mContext.getContentResolver().unregisterContentObserver(mNextAlarmObserver);
+                        }
                     }
                 }
         );
@@ -205,8 +254,30 @@ public class XposedMod implements IXposedHookLoadPackage {
                     boolean.class, new XC_MethodHook() {
                         @Override
                         protected void beforeHookedMethod(MethodHookParam param) throws Throwable {
-                            if (getObjectField(param.thisObject, "mSlot").equals("alarm_clock"))
+                            if (getObjectField(param.thisObject, "mSlot").equals("alarm_clock")) {
                                 param.setResult(true);
+                            }
+                        }
+                    }
+            );
+        }
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+            /* Set the alarm clock drawable in the expanded status bar */
+            findAndHookMethod("com.android.systemui.statusbar.phone.StatusBarHeaderView", classLoader, "onNextAlarmChanged",
+                    AlarmManager.AlarmClockInfo.class, new XC_MethodHook() {
+                        @Override
+                        protected void afterHookedMethod(MethodHookParam param) throws Throwable {
+                            if (param.args[0] != null) {
+                                if (mClockDrawableStatusbar == null) {
+                                    mClockDrawableStatusbar = new ClockDrawable(0, 0);
+                                }
+
+                                TextView mAlarmStatus = (TextView) getObjectField(param.thisObject, "mAlarmStatus");
+                                mClockDrawableStatusbar.setColorFilter(mAlarmStatus.getCurrentTextColor(), PorterDuff.Mode.MULTIPLY);
+                                mClockDrawableStatusbar.setBounds(0, 0, Math.round(18 * Resources.getSystem().getDisplayMetrics().density), Math.round(18 * Resources.getSystem().getDisplayMetrics().density));
+                                mAlarmStatus.setCompoundDrawables(mClockDrawableStatusbar, null, null, null);
+                            }
                         }
                     }
             );
@@ -245,14 +316,27 @@ public class XposedMod implements IXposedHookLoadPackage {
         if (mClockDrawable == null) {
             LinearLayout statusIcons = (LinearLayout) getObjectField(thiz, "mStatusIcons");
             for (int i = 0; i < statusIcons.getChildCount(); i++) {
-                View view = statusIcons.getChildAt(i);
-                if (getObjectField(view, "mSlot").equals("alarm_clock")) {
+                ImageView alarm_clock = (ImageView) statusIcons.getChildAt(i);
+                if (getObjectField(alarm_clock, "mSlot").equals("alarm_clock")) {
                     mClockDrawable = new ClockDrawable(hour, minute);
-                    callMethod(view, "setImageDrawable", mClockDrawable);
+                    alarm_clock.setImageDrawable(mClockDrawable);
+
+                    if (IS_LOLLIPOP_OR_ABOVE) {
+                        alarm_clock.getLayoutParams().width = getIntField(thiz, "mIconSize") + 2 * getIntField(thiz, "mIconHPadding");
+                        alarm_clock.getLayoutParams().height = Math.round(20 * Resources.getSystem().getDisplayMetrics().density);
+                    }
                 }
             }
         } else {
             mClockDrawable.setTime(hour, minute);
+        }
+
+        if (IS_LOLLIPOP_OR_ABOVE) {
+            if (mClockDrawableStatusbar == null) {
+                mClockDrawableStatusbar = new ClockDrawable(hour, minute);
+            } else {
+                mClockDrawableStatusbar.setTime(hour, minute);
+            }
         }
     }
 }
