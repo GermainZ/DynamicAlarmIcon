@@ -89,8 +89,8 @@ public class XposedMod implements IXposedHookLoadPackage {
     private static final int CLOCK_STYLE_TOUCHWIZ = 1;
 
     public static final boolean IS_LOLLIPOP_OR_ABOVE = Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP;
-    private static final int SBNIDX = IS_LOLLIPOP_OR_ABOVE ? 0 : 1;
-    private static final int SBNIIDX = IS_LOLLIPOP_OR_ABOVE ? 1 : 2;
+    private static final int StatusbarNotificationIdx = IS_LOLLIPOP_OR_ABOVE ? 0 : 1;
+    private static final int StatusBarIconViewIdx = IS_LOLLIPOP_OR_ABOVE ? 1 : 2;
 
     private int statusbarIconHeight, statusbarHeaderIconSize;
 
@@ -118,7 +118,7 @@ public class XposedMod implements IXposedHookLoadPackage {
         XC_MethodHook NotificationDataEntryHook = new XC_MethodHook() {
             @Override
             protected void beforeHookedMethod(MethodHookParam param) throws Throwable {
-                Object notification = param.args[SBNIDX];
+                Object notification = param.args[StatusbarNotificationIdx];
                 String packageName = (String) getObjectField(notification, "pkg");
                 if (!CLOCK_PACKAGES.contains(packageName))
                     return;
@@ -169,7 +169,7 @@ public class XposedMod implements IXposedHookLoadPackage {
                 if (alarmTime == null) return;
 
                 // Set the small icon.
-                ImageView icon = (ImageView) param.args[SBNIIDX];
+                ImageView icon = (ImageView) param.args[StatusBarIconViewIdx];
                 icon.setImageDrawable(getClockDrawable(alarmTime.first, alarmTime.second));
 
                 // Set the large icon (shown in the notification shade) for the normal views.
