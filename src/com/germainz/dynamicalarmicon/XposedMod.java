@@ -99,7 +99,9 @@ public class XposedMod implements IXposedHookLoadPackage {
         if (lpparam.packageName.equals("com.android.systemui")) {
             mConfig = new Config();
             hookSystemUI(lpparam.classLoader);
-        } else if (lpparam.packageName.equals("ch.bitspin.timely")) {
+        } else if ((Build.VERSION.SDK_INT < Build.VERSION_CODES.LOLLIPOP) && (lpparam.packageName.equals("ch.bitspin.timely"))) {
+            // For Lollipop Timely uses the official AlarmManager API to show the statusbar icon
+            // On older versions it uses a hidden API which requires a hook directly into Timely
             hookTimely(lpparam.classLoader);
         }
     }
